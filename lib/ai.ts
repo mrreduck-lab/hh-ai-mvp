@@ -3,6 +3,7 @@ import type { ParsedVacancy } from "./parseVacancy";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://api.aitunnel.ru/v1"
 });
 
 export type AnalyzeResult = {
@@ -64,21 +65,22 @@ ${vacancy.description}
 ${resumeText}
 `;
 
-  const response = await client.responses.create({
-    model: "gpt-5.4",
-    input: [
-      {
-        role: "system",
-        content: prompt,
-      },
-      {
-        role: "user",
-        content: input,
-      },
-    ],
-  });
+  const completion = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages: [
+    {
+      role: "system",
+      content: prompt,
+    },
+    {
+      role: "user",
+      content: input,
+    },
+  ],
+  temperature: 0.7,
+});
 
-  const rawText = getTextFromResponse(response);
+const rawText = completion.choices[0]?.message?.content || "";
 
   let parsed: AnalyzeResult;
   try {

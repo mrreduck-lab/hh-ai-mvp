@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type AnalyzeResponse = {
   vacancy: {
@@ -24,15 +25,154 @@ type AnalyzeResponse = {
   };
 };
 
+type UserSession = {
+  id: string;
+  email?: string;
+} | null;
+
+type Profile = {
+  full_name?: string | null;
+  about_me?: string | null;
+  resume_file_path?: string | null;
+  resume_text?: string | null;
+} | null;
+
+const supabase = createClient();
+
 export default function HomePage() {
   const [vacancyUrl, setVacancyUrl] = useState("");
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [aboutMe, setAboutMe] = useState("");
+  const [fullName, setFullName] = useState("");
+
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+
+  const [user, setUser] = useState<UserSession>(null);
+  const [profile, setProfile] = useState<Profile>(null);
+
   const [loading, setLoading] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
   const [error, setError] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
+
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
 
   const [copiedCover, setCopiedCover] = useState(false);
   const [copiedSummary, setCopiedSummary] = useState(false);
+
+  useEffect(() => {
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async () => {
+      await loadSession();
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function loadSession() {
+    const sessionRes = await fetch("/api/auth/session");
+    const sessionJson = await sessionRes.json();
+    setUser(sessionJson.user);
+
+    if (sessionJson.user) {
+      const profileRes = await fetch("/api/profile");
+      const profileJson = await profileRes.json();
+      setProfile(profileJson.profile);
+      setFullName(profileJson.profile?.full_name || "");
+      setAboutMe(profileJson.profile?.about_me || "");
+    } else {
+      setProfile(null);
+      setFullName("");
+      setAboutMe("");
+    }
+  }
+
+  async function signUp() {
+    setAuthError("");
+    setAuthLoading(true);
+
+    const { error } = await supabase.auth.signUp({
+      email: authEmail,
+      password: authPassword,
+    });
+
+    setAuthLoading(false);
+
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+
+    setAuthError("Проверь почту и подтверди регистрацию, если письмо пришло.");
+  }
+
+  async function signIn() {
+    setAuthError("");
+    setAuthLoading(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password: authPassword,
+    });
+
+    setAuthLoading(false);
+
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setResult(null);
+  }
+
+  async function saveProfile() {
+    if (!user) {
+      setProfileMessage("Сначала войди в аккаунт");
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      setProfileMessage("");
+
+      const formData = new FormData();
+      formData.append("fullName", fullName);
+      formData.append("aboutMe", aboutMe);
+
+      if (resumeFile) {
+        formData.append("resumeFile", resumeFile);
+      }
+
+      const response = await fetch("/api/profile", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Не удалось сохранить профиль");
+      }
+
+      setProfileMessage("Профиль сохранён");
+      setResumeFile(null);
+      await loadSession();
+    } catch (err) {
+      setProfileMessage(err instanceof Error ? err.message : "Ошибка");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   async function handleAnalyze(e: React.FormEvent) {
     e.preventDefault();
@@ -46,17 +186,16 @@ export default function HomePage() {
       return;
     }
 
-    if (!resumeFile) {
-      setError("Загрузи резюме");
-      return;
-    }
-
     try {
       setLoading(true);
 
       const formData = new FormData();
       formData.append("vacancyUrl", vacancyUrl.trim());
-      formData.append("resumeFile", resumeFile);
+      formData.append("aboutMe", aboutMe);
+
+      if (resumeFile) {
+        formData.append("resumeFile", resumeFile);
+      }
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -117,14 +256,127 @@ export default function HomePage() {
               HH AI Copilot MVP
             </p>
             <h1 className="text-4xl font-semibold tracking-tight md:text-6xl">
-              Улучши отклик под вакансию
+              Личный кабинет кандидата
             </h1>
             <p className="mt-4 text-base leading-7 text-[#6e6e73] md:text-lg">
-              Вставь ссылку на вакансию hh.ru, загрузи резюме и получи готовое
-              сопроводительное письмо, summary для резюме и сильные правки “до / после”.
+              Сохрани резюме и контекст о себе один раз и используй это в каждом отклике.
             </p>
           </div>
         </section>
+
+        {!user ? (
+          <section className="mx-auto mb-8 max-w-3xl rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
+            <h2 className="text-2xl font-semibold tracking-tight">Вход / регистрация</h2>
+            <div className="mt-6 grid gap-4">
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full rounded-2xl border border-black/10 bg-[#fbfbfd] px-4 py-4 outline-none"
+              />
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                placeholder="Пароль"
+                className="w-full rounded-2xl border border-black/10 bg-[#fbfbfd] px-4 py-4 outline-none"
+              />
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={signIn}
+                  disabled={authLoading}
+                  className="rounded-full bg-[#0071e3] px-5 py-3 text-sm font-medium text-white"
+                >
+                  Войти
+                </button>
+                <button
+                  onClick={signUp}
+                  disabled={authLoading}
+                  className="rounded-full border border-black/10 px-5 py-3 text-sm font-medium"
+                >
+                  Зарегистрироваться
+                </button>
+              </div>
+              {authError && (
+                <div className="rounded-2xl bg-[#f5f5f7] px-4 py-3 text-sm text-[#6e6e73]">
+                  {authError}
+                </div>
+              )}
+            </div>
+          </section>
+        ) : (
+          <section className="mx-auto mb-8 max-w-4xl rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight">Мой профиль</h2>
+                <p className="mt-2 text-sm text-[#6e6e73]">{user.email}</p>
+              </div>
+              <button
+                onClick={signOut}
+                className="rounded-full border border-black/10 px-5 py-3 text-sm font-medium"
+              >
+                Выйти
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4">
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Имя"
+                className="w-full rounded-2xl border border-black/10 bg-[#fbfbfd] px-4 py-4 outline-none"
+              />
+
+              <textarea
+                value={aboutMe}
+                onChange={(e) => setAboutMe(e.target.value)}
+                placeholder="О себе: кейсы, достижения, цифры, контекст, что важно учитывать в откликах"
+                rows={8}
+                className="w-full rounded-2xl border border-black/10 bg-[#fbfbfd] px-4 py-4 outline-none"
+              />
+
+              <div>
+                <label className="mb-3 block text-sm font-medium text-[#1d1d1f]">
+                  Резюме
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt"
+                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                  className="block w-full text-sm text-[#6e6e73]"
+                />
+                {profile?.resume_file_path && !resumeFile && (
+                  <p className="mt-3 text-sm text-[#6e6e73]">
+                    Сохранённое резюме уже есть
+                  </p>
+                )}
+                {resumeFile && (
+                  <p className="mt-3 text-sm text-[#6e6e73]">
+                    Новый файл: {resumeFile.name}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={saveProfile}
+                  disabled={savingProfile}
+                  className="rounded-full bg-[#1d1d1f] px-5 py-3 text-sm font-medium text-white"
+                >
+                  {savingProfile ? "Сохраняем..." : "Сохранить профиль"}
+                </button>
+              </div>
+
+              {profileMessage && (
+                <div className="rounded-2xl bg-[#f5f5f7] px-4 py-3 text-sm text-[#6e6e73]">
+                  {profileMessage}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="mx-auto max-w-4xl rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
           <form onSubmit={handleAnalyze} className="space-y-6">
@@ -137,13 +389,13 @@ export default function HomePage() {
                 value={vacancyUrl}
                 onChange={(e) => setVacancyUrl(e.target.value)}
                 placeholder="https://hh.ru/vacancy/..."
-                className="w-full rounded-2xl border border-black/10 bg-[#fbfbfd] px-4 py-4 text-[15px] outline-none transition placeholder:text-[#8e8e93] focus:border-black/20 focus:bg-white"
+                className="w-full rounded-2xl border border-black/10 bg-[#fbfbfd] px-4 py-4 text-[15px] outline-none"
               />
             </div>
 
             <div>
               <label className="mb-3 block text-sm font-medium text-[#1d1d1f]">
-                Резюме (PDF, DOCX, TXT)
+                Новый файл резюме (необязательно)
               </label>
               <input
                 type="file"
@@ -151,25 +403,31 @@ export default function HomePage() {
                 onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
                 className="block w-full text-sm text-[#6e6e73]"
               />
-              {resumeFile && (
-                <p className="mt-3 text-sm text-[#6e6e73]">
-                  Загружено: {resumeFile.name}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <button
-                type="submit"
-                disabled={loading}
-                className="inline-flex items-center justify-center rounded-full bg-[#0071e3] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? "Анализируем..." : "Анализировать"}
-              </button>
-              <p className="text-sm text-[#6e6e73]">
-                Сначала оцениваем fit, потом собираем письмо и правки резюме.
+              <p className="mt-3 text-sm text-[#6e6e73]">
+                Если файл не загружать, для анализа возьмём резюме из кабинета.
               </p>
             </div>
+
+            <div>
+              <label className="mb-3 block text-sm font-medium text-[#1d1d1f]">
+                О себе / дополнительный контекст
+              </label>
+              <textarea
+                value={aboutMe}
+                onChange={(e) => setAboutMe(e.target.value)}
+                rows={6}
+                placeholder="Здесь можно дописать важный контекст, который должен использоваться в отклике"
+                className="w-full rounded-2xl border border-black/10 bg-[#fbfbfd] px-4 py-4 outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-full bg-[#0071e3] px-6 py-3 text-sm font-medium text-white"
+            >
+              {loading ? "Анализируем..." : "Анализировать"}
+            </button>
 
             {error && (
               <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
@@ -194,7 +452,7 @@ export default function HomePage() {
                   href={result.vacancy.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center rounded-full bg-[#1d1d1f] px-5 py-3 text-sm font-medium text-white transition hover:bg-black"
+                  className="inline-flex items-center justify-center rounded-full bg-[#1d1d1f] px-5 py-3 text-sm font-medium text-white"
                 >
                   Перейти к отклику
                 </a>
@@ -261,7 +519,7 @@ export default function HomePage() {
 
                   <button
                     onClick={() => copyText(result.analysis.cover_letter, "cover")}
-                    className="inline-flex items-center justify-center rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-[#1d1d1f] transition hover:bg-[#f5f5f7]"
+                    className="inline-flex items-center justify-center rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-[#1d1d1f]"
                   >
                     {copiedCover ? "Скопировано" : "Скопировать письмо"}
                   </button>
@@ -284,10 +542,8 @@ export default function HomePage() {
                   </div>
 
                   <button
-                    onClick={() =>
-                      copyText(result.analysis.tailored_summary, "summary")
-                    }
-                    className="inline-flex items-center justify-center rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-[#1d1d1f] transition hover:bg-[#f5f5f7]"
+                    onClick={() => copyText(result.analysis.tailored_summary, "summary")}
+                    className="inline-flex items-center justify-center rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-[#1d1d1f]"
                   >
                     {copiedSummary ? "Скопировано" : "Скопировать summary"}
                   </button>
@@ -296,62 +552,6 @@ export default function HomePage() {
                 <div className="mt-5 rounded-3xl bg-[#f5f5f7] p-5 text-[15px] leading-7 text-[#1d1d1f]">
                   {result.analysis.tailored_summary}
                 </div>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
-              <h3 className="text-xl font-semibold tracking-tight">
-                Что усилить в резюме под вакансию
-              </h3>
-              <div className="mt-5 flex flex-wrap gap-3">
-                {result.analysis.resume_highlights.map((item, index) => (
-                  <div
-                    key={index}
-                    className="rounded-full bg-[#f5f5f7] px-4 py-2 text-sm text-[#1d1d1f] ring-1 ring-black/5"
-                  >
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
-              <div className="mb-6">
-                <h3 className="text-xl font-semibold tracking-tight">
-                  Резюме: было → стало
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-[#6e6e73]">
-                  Ниже — готовые формулировки, которые можно перенести в резюме на HH.
-                </p>
-              </div>
-
-              <div className="space-y-5">
-                {result.analysis.resume_rewrites.map((item, index) => (
-                  <div
-                    key={index}
-                    className="rounded-3xl bg-[#fbfbfd] p-5 ring-1 ring-black/5"
-                  >
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="rounded-2xl bg-[#f2f2f7] p-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#6e6e73]">
-                          Было
-                        </p>
-                        <p className="text-[15px] leading-7 text-[#1d1d1f]">
-                          {item.original}
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl bg-[#eef6ff] p-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#0071e3]">
-                          Стало
-                        </p>
-                        <p className="text-[15px] leading-7 text-[#1d1d1f]">
-                          {item.rewritten}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </section>

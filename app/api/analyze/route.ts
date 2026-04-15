@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { parseResumeFile } from "@/lib/parseResume";
 import { parseVacancyFromUrl } from "@/lib/parseVacancy";
 import { analyzeResumeAndVacancy } from "@/lib/ai";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,6 +12,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
 
     const vacancyUrl = String(formData.get("vacancyUrl") || "").trim();
+    const aboutMe = String(formData.get("aboutMe") || "").trim();
     const resumeFile = formData.get("resumeFile");
 
     if (!vacancyUrl) {
@@ -20,28 +22,47 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!(resumeFile instanceof File)) {
-      return NextResponse.json(
-        { error: "Загрузи резюме в PDF, DOCX или TXT" },
-        { status: 400 }
-      );
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    let savedResumeText = "";
+    let savedAboutMe = "";
+
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("resume_text, about_me")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      savedResumeText = profile?.resume_text || "";
+      savedAboutMe = profile?.about_me || "";
     }
 
-    const [resumeText, vacancy] = await Promise.all([
-      parseResumeFile(resumeFile),
-      parseVacancyFromUrl(vacancyUrl),
-    ]);
+    let resumeText = savedResumeText;
+
+    if (resumeFile instanceof File && resumeFile.size > 0) {
+      resumeText = await parseResumeFile(resumeFile);
+    }
 
     if (!resumeText || resumeText.length < 100) {
       return NextResponse.json(
-        { error: "Не удалось нормально прочитать резюме" },
+        { error: "Загрузи резюме или сохрани его в личном кабинете" },
         { status: 400 }
       );
     }
+
+    const vacancy = await parseVacancyFromUrl(vacancyUrl);
+
+    const mergedAbout = [savedAboutMe, aboutMe].filter(Boolean).join("\n\n");
 
     const analysis = await analyzeResumeAndVacancy({
       resumeText,
       vacancy,
+      aboutMe: mergedAbout,
     });
 
     return NextResponse.json({

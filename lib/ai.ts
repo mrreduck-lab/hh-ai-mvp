@@ -6,12 +6,20 @@ const client = new OpenAI({
   baseURL: "https://api.aitunnel.ru/v1",
 });
 
+export type ResumeRewriteItem = {
+  original: string;
+  rewritten: string;
+};
+
 export type AnalyzeResult = {
   fit_score: number;
   match_level: "strong" | "medium" | "low";
   strengths: string[];
   gaps: string[];
   cover_letter: string;
+  tailored_summary: string;
+  resume_highlights: string[];
+  resume_rewrites: ResumeRewriteItem[];
 };
 
 export async function analyzeResumeAndVacancy(params: {
@@ -21,7 +29,7 @@ export async function analyzeResumeAndVacancy(params: {
   const { resumeText, vacancy } = params;
 
   const prompt = `
-Ты сильный карьерный редактор, executive resume writer и advisor по откликам на вакансии.
+Ты сильный карьерный редактор, executive writer и advisor по откликам.
 
 Тебе даны:
 1) текст вакансии
@@ -31,38 +39,37 @@ export async function analyzeResumeAndVacancy(params: {
 1. Оцени соответствие кандидата вакансии.
 2. Выдай fit_score от 0 до 100.
 3. Определи match_level: strong, medium или low.
-4. Напиши 3 сильных совпадения кандидата с вакансией.
-5. Напиши 3 пробела / риска.
+4. Напиши 3 сильных совпадения.
+5. Напиши 3 риска / пробела.
 6. Напиши сопроводительное письмо на русском языке.
+7. Напиши сильный tailored_summary для верхнего блока резюме под эту вакансию.
+8. Выдели 4-6 ключевых акцентов, которые нужно усилить в резюме под эту вакансию.
+9. Сгенерируй 3-5 пар "original → rewritten":
+   - original = короткая исходная формулировка на основе резюме
+   - rewritten = более сильная и релевантная формулировка под вакансию
+   - rewritten должна быть конкретной, с цифрами, если они есть в резюме
+   - нельзя выдумывать факты
 
 Критично важно:
-- НЕ выдумывай опыт, цифры, названия компаний, навыки, индустрии, роли и достижения.
-- Используй только те факты, которые явно есть в резюме.
-- Перед написанием письма выбери только 2-3 самых сильных и релевантных достижения кандидата под эту вакансию.
-- Если в резюме есть конкретные цифры, проценты, масштабы бизнеса, число точек, брендов, размер команды, партнёры или KPI — обязательно используй их.
+- НЕ выдумывай опыт, цифры, проценты, количество точек, брендов, размер команды, названия компаний и партнёров.
+- НЕ меняй цифры и факты из резюме.
+- Если в резюме нет точной цифры, не подставляй приблизительную.
+- Используй только факты, которые явно есть в резюме.
+- Перед письмом и summary мысленно выбери только 2-3 самых сильных достижения кандидата под эту вакансию.
+- Если в резюме есть конкретные KPI и масштабы, используй минимум 2 из них в письме или summary.
 - НЕ перечисляй всё резюме.
-- НЕ используй пустые фразы и штампы:
-  "ответственный", "командный игрок", "стрессоустойчивый", "мотивирован", "быстро обучаюсь",
-  "уверен, что мой опыт поможет", "заинтересован в позиции", "обладаю богатым опытом".
-- НЕ пиши канцеляритом и пафосом.
-- Если есть пробелы, не делай на них акцент в письме. Акцентируй релевантные сильные стороны.
-- Письмо должно быть коротким, плотным, конкретным и живым.
-- В начале письма должен быть короткий summary на 1-2 предложения.
-- Общая длина письма: 600-1100 знаков.
-- Тон: уверенный, взрослый, спокойный.
-- Письмо должно звучать как сообщение сильного кандидата, а не как шаблон от нейросети.
-- Не добавляй приветствие "Меня зовут ...", если это не усиливает письмо.
-- Не добавляй "С уважением" и подпись.
-
-Структура письма:
-1. Короткий summary: кто кандидат и в чём его релевантность этой роли
-2. Почему именно этот опыт релевантен данной вакансии
-3. 1-2 самых сильных доказательства с цифрами и фактами
-4. Короткое завершение в 1 предложении
+- НЕ используй пустые штампы:
+  "ответственный", "командный игрок", "стрессоустойчивый", "мотивирован", "уверен, что мой опыт поможет", "заинтересован в позиции", "обладаю богатым опытом".
+- НЕ пиши канцеляритом.
+- Не добавляй приветствие, подпись и "с уважением".
+- Тон: уверенный, взрослый, спокойный, конкретный.
+- Сопроводительное письмо: 650-1100 знаков.
+- tailored_summary: 280-500 знаков.
+- Письмо и summary должны звучать как текст сильного кандидата, а не шаблон нейросети.
 
 Правила fit_score:
-- 80-100 = сильное соответствие, если есть прямой релевантный опыт, уровень и часть ключевых задач
-- 60-79 = хорошее/среднее соответствие, если релевантность есть, но не полная
+- 80-100 = сильное соответствие
+- 60-79 = хорошее / среднее соответствие
 - 0-59 = слабое соответствие
 
 Верни ТОЛЬКО валидный JSON:
@@ -71,7 +78,15 @@ export async function analyzeResumeAndVacancy(params: {
   "match_level": "strong",
   "strengths": ["", "", ""],
   "gaps": ["", "", ""],
-  "cover_letter": ""
+  "cover_letter": "",
+  "tailored_summary": "",
+  "resume_highlights": ["", "", "", ""],
+  "resume_rewrites": [
+    {
+      "original": "",
+      "rewritten": ""
+    }
+  ]
 }
 `.trim();
 
@@ -86,6 +101,12 @@ ${vacancy.description}
 
 РЕЗЮМЕ КАНДИДАТА:
 ${resumeText}
+
+ВАЖНО:
+- Используй только факты из резюме.
+- Не изменяй цифры и масштабы.
+- Если в резюме написано 40+ точек, нельзя писать 30.
+- Если в резюме есть сильные KPI, используй их в письме, summary и rewritten bullets.
 `.trim();
 
   const completion = await client.chat.completions.create({
@@ -100,7 +121,7 @@ ${resumeText}
         content: input,
       },
     ],
-    temperature: 0.4,
+    temperature: 0.35,
     response_format: { type: "json_object" },
   });
 
@@ -110,7 +131,7 @@ ${resumeText}
     throw new Error("Пустой ответ от модели");
   }
 
-  let parsed: AnalyzeResult;
+  let parsed: Partial<AnalyzeResult>;
   try {
     parsed = JSON.parse(rawText);
   } catch {
@@ -136,31 +157,49 @@ function normalizeAnalyzeResult(result: Partial<AnalyzeResult>): AnalyzeResult {
       ? "medium"
       : "low";
 
-  const strengths = Array.isArray(result.strengths)
-    ? result.strengths
-        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-        .slice(0, 3)
-    : [];
+  const strengths = toStringArray(result.strengths, 3);
+  const gaps = toStringArray(result.gaps, 3);
+  const resumeHighlights = toStringArray(result.resume_highlights, 6);
 
-  const gaps = Array.isArray(result.gaps)
-    ? result.gaps
-        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-        .slice(0, 3)
+  const rewrites = Array.isArray(result.resume_rewrites)
+    ? result.resume_rewrites
+        .filter(
+          (item): item is ResumeRewriteItem =>
+            !!item &&
+            typeof item === "object" &&
+            typeof item.original === "string" &&
+            typeof item.rewritten === "string" &&
+            item.original.trim().length > 0 &&
+            item.rewritten.trim().length > 0
+        )
+        .slice(0, 5)
+        .map((item) => ({
+          original: cleanupText(item.original),
+          rewritten: cleanupText(item.rewritten),
+        }))
     : [];
-
-  const coverLetter =
-    typeof result.cover_letter === "string" ? cleanupCoverLetter(result.cover_letter) : "";
 
   return {
     fit_score: fitScore,
     match_level: matchLevel,
     strengths,
     gaps,
-    cover_letter: coverLetter,
+    cover_letter: cleanupText(result.cover_letter ?? ""),
+    tailored_summary: cleanupText(result.tailored_summary ?? ""),
+    resume_highlights: resumeHighlights,
+    resume_rewrites: rewrites,
   };
 }
 
-function cleanupCoverLetter(text: string): string {
+function toStringArray(value: unknown, maxItems: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .slice(0, maxItems)
+    .map((item) => cleanupText(item));
+}
+
+function cleanupText(text: string): string {
   return text
     .replace(/\r/g, "\n")
     .replace(/\n{3,}/g, "\n\n")

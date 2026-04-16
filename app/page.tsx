@@ -22,6 +22,7 @@ type AnalyzeResponse = {
       original: string;
       rewritten: string;
     }[];
+    profile_improvements: string[];
   };
 };
 
@@ -505,6 +506,25 @@ export default function HomePage() {
               </ul>
             </div>
 
+            <div className="rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
+              <h3 className="text-xl font-semibold tracking-tight">
+                Что стоит добавить в профиль
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-[#6e6e73]">
+                Эти данные сделают отклики заметно сильнее.
+              </p>
+              <ul className="mt-5 space-y-3">
+                {result.analysis.profile_improvements.map((item, index) => (
+                  <li
+                    key={index}
+                    className="rounded-2xl bg-[#f5f5f7] px-4 py-4 text-[15px] leading-7 text-[#1d1d1f]"
+                  >
+                    + {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
             <div className="grid gap-6 xl:grid-cols-2">
               <div className="rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -552,6 +572,62 @@ export default function HomePage() {
                 <div className="mt-5 rounded-3xl bg-[#f5f5f7] p-5 text-[15px] leading-7 text-[#1d1d1f]">
                   {result.analysis.tailored_summary}
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
+              <h3 className="text-xl font-semibold tracking-tight">
+                Что усилить в резюме под вакансию
+              </h3>
+              <div className="mt-5 flex flex-wrap gap-3">
+                {result.analysis.resume_highlights.map((item, index) => (
+                  <div
+                    key={index}
+                    className="rounded-full bg-[#f5f5f7] px-4 py-2 text-sm text-[#1d1d1f] ring-1 ring-black/5"
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] bg-white p-6 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ring-1 ring-black/5 md:p-8">
+              <div className="mb-6">
+                <h3 className="text-xl font-semibold tracking-tight">
+                  Резюме: было → стало
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-[#6e6e73]">
+                  Ниже — готовые формулировки, которые можно перенести в резюме на HH.
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                {result.analysis.resume_rewrites.map((item, index) => (
+                  <div
+                    key={index}
+                    className="rounded-3xl bg-[#fbfbfd] p-5 ring-1 ring-black/5"
+                  >
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-2xl bg-[#f2f2f7] p-4">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#6e6e73]">
+                          Было
+                        </p>
+                        <p className="text-[15px] leading-7 text-[#1d1d1f]">
+                          {item.original}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-[#eef6ff] p-4">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#0071e3]">
+                          Стало
+                        </p>
+                        <p className="text-[15px] leading-7 text-[#1d1d1f]">
+                          {item.rewritten}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </section>

@@ -20,6 +20,7 @@ export type AnalyzeResult = {
   tailored_summary: string;
   resume_highlights: string[];
   resume_rewrites: ResumeRewriteItem[];
+  profile_improvements: string[];
 };
 
 export async function analyzeResumeAndVacancy(params: {
@@ -47,12 +48,19 @@ export async function analyzeResumeAndVacancy(params: {
 7. Напиши strong tailored_summary для верхнего блока резюме.
 8. Выдели 4-6 акцентов, которые нужно усилить в резюме под эту вакансию.
 9. Сгенерируй 3-5 пар "original → rewritten".
+10. Дай 3-5 рекомендаций, что стоит добавить в профиль кандидата, если профиль недостаточно конкретный.
 
 Критично важно:
 - НЕ выдумывай факты.
 - НЕ меняй цифры, проценты, количество точек, брендов, лет, размер команды, названия компаний и партнёров.
 - Используй только факты из резюме и текста "о себе".
 - Если в "о себе" есть релевантные достижения, используй их.
+- Если в данных кандидата есть цифры, KPI, масштаб бизнеса, команда, количество точек, брендов, партнёры — обязательно старайся использовать их в summary, письме и rewritten bullets.
+- Если цифр или масштаба не хватает, не выдумывай их, а укажи это в profile_improvements.
+- profile_improvements должны быть конкретными. Не пиши абстрактно "добавьте больше информации". Пиши так:
+  - "Добавь 2–3 измеримых результата по выручке или росту клиентов"
+  - "Укажи масштаб бизнеса: число точек, брендов, клиентов или команд"
+  - "Добавь кейс снижения затрат, ДРР или роста эффективности"
 - Не используй штампы и канцелярит.
 - Не добавляй приветствие и подпись.
 - Тон: уверенный, взрослый, конкретный.
@@ -68,7 +76,8 @@ export async function analyzeResumeAndVacancy(params: {
   "resume_highlights": ["", "", "", ""],
   "resume_rewrites": [
     { "original": "", "rewritten": "" }
-  ]
+  ],
+  "profile_improvements": ["", "", ""]
 }
 `.trim();
 
@@ -133,6 +142,7 @@ function normalizeAnalyzeResult(result: Partial<AnalyzeResult>): AnalyzeResult {
   const strengths = toStringArray(result.strengths, 3);
   const gaps = toStringArray(result.gaps, 3);
   const resumeHighlights = toStringArray(result.resume_highlights, 6);
+  const profileImprovements = toStringArray(result.profile_improvements, 5);
 
   const rewrites = Array.isArray(result.resume_rewrites)
     ? result.resume_rewrites
@@ -161,6 +171,7 @@ function normalizeAnalyzeResult(result: Partial<AnalyzeResult>): AnalyzeResult {
     tailored_summary: cleanupText(result.tailored_summary ?? ""),
     resume_highlights: resumeHighlights,
     resume_rewrites: rewrites,
+    profile_improvements: profileImprovements,
   };
 }
 
